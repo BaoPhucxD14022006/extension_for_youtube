@@ -1,0 +1,227 @@
+/* CinemaSub - Cinema Subtitle Overlay & Controls */
+
+/* --- OVERLAY ROOT --- */
+#cinema-sub-root {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 60px; /* Positioned just above YouTube bottom control bar */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 60;
+  transition: bottom 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+  user-select: none;
+  padding: 0 40px;
+}
+
+/* When YouTube controls are hidden/autohide, lower the subtitles slightly */
+.ytp-autohide #cinema-sub-root {
+  bottom: 30px;
+}
+
+/* --- COMPLETE SUPPRESSION OF YOUTUBE NATIVE CAPTIONS --- */
+.ytp-caption-window-container,
+.ytp-caption-window-bottom,
+.ytp-caption-window-rollup,
+.caption-window,
+.caption-window-rollup,
+.ytp-caption-segment,
+.captions-text,
+.ytp-subtitles-player-content,
+[class*="caption-window"],
+[class*="ytp-caption-window"],
+#movie_player .caption-window {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  width: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Subtitle Box container */
+.cinema-sub-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  max-width: 85%;
+  padding: 6px 16px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+/* Glassmorphism subtle background (toggleable) */
+.cinema-sub-box.has-backdrop {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* English Line (Bilingual mode) */
+.cinema-sub-en {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", Helvetica, Arial, sans-serif;
+  color: #E2E8F0;
+  opacity: 0.85;
+  font-weight: 500;
+  margin-bottom: 4px;
+  line-height: 1.3;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000, 1px 1px 2px #000;
+  transition: all 0.15s ease;
+}
+
+/* Vietnamese Line (Main Cinema Subtitle) */
+.cinema-sub-vi {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", Helvetica, Arial, sans-serif;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.2px;
+  /* Ultimate cinema text shadow for maximum readability on any background */
+  text-shadow: 
+    0 0 4px #000,
+    0 0 8px #000,
+    2px 2px 3px #000,
+    -2px -2px 3px #000,
+    2px -2px 3px #000,
+    -2px 2px 3px #000;
+  transition: all 0.15s ease;
+}
+
+/* Font Size Scales */
+.cinema-sub-box.size-small .cinema-sub-en { font-size: clamp(13px, 1.4vw, 18px); }
+.cinema-sub-box.size-small .cinema-sub-vi { font-size: clamp(16px, 1.8vw, 24px); }
+
+.cinema-sub-box.size-medium .cinema-sub-en { font-size: clamp(15px, 1.7vw, 22px); }
+.cinema-sub-box.size-medium .cinema-sub-vi { font-size: clamp(19px, 2.3vw, 30px); }
+
+.cinema-sub-box.size-large .cinema-sub-en { font-size: clamp(18px, 2.1vw, 26px); }
+.cinema-sub-box.size-large .cinema-sub-vi { font-size: clamp(23px, 2.8vw, 38px); }
+
+/* --- YOUTUBE PLAYER CONTROL BUTTON --- */
+.cinema-player-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  padding: 0 8px;
+  height: 100%;
+  vertical-align: top;
+  position: relative;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+}
+
+.cinema-player-btn:hover {
+  transform: scale(1.08);
+}
+
+.cinema-player-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: #fff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+  transition: fill 0.2s ease;
+}
+
+.cinema-player-btn.active svg {
+  fill: #FCD34D; /* Cinema gold */
+}
+
+/* Tooltip badge on hover */
+.cinema-player-btn .cinema-btn-tooltip {
+  position: absolute;
+  bottom: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.95);
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  font-family: Roboto, sans-serif;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 9999;
+}
+
+.cinema-player-btn:hover .cinema-btn-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* --- TOAST NOTIFICATION ON PLAYER --- */
+.cinema-sub-toast {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  pointer-events: auto;
+  animation: cinemaToastFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.cinema-sub-toast.toast-error {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.cinema-sub-toast.toast-success {
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.cinema-toast-icon {
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.cinema-toast-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  margin-left: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.cinema-toast-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes cinemaToastFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

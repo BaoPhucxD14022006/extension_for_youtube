@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "CinemaSub - Phụ Đề AI YouTube (Vietsub Phim)",
+  "version": "1.0.0",
+  "description": "Biến phụ đề YouTube rời rạc thành phụ đề tiếng Việt nguyên câu chuẩn phim chiếu rạp bằng AI.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Cài đặt CinemaSub",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://integrate.api.nvidia.com/*"
+  ],
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content/page-bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "content/*"],
+      "matches": ["*://*.youtube.com/*"]
+    }
+  ]
+}

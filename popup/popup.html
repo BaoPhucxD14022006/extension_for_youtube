@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CinemaSub - Cài đặt</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">🎬</div>
+        <div class="brand-text">
+          <h1>CinemaSub</h1>
+          <span class="badge">Phim Chiếu Rạp</span>
+        </div>
+      </div>
+      <label class="switch" title="Bật/Tắt phụ đề">
+        <input type="checkbox" id="toggle-enabled" checked>
+        <span class="slider"></span>
+      </label>
+    </header>
+
+    <!-- Main Content -->
+    <main class="content">
+      <!-- AI Provider Selection -->
+      <section class="card">
+        <div class="card-header">
+          <span class="icon">🚀</span>
+          <h2>Nền tảng AI (Provider)</h2>
+        </div>
+        <div class="segmented-control full-width" id="provider-group">
+          <button type="button" class="segment-btn active" data-value="nvidia">🟢 NVIDIA NIM (Khuyên dùng)</button>
+          <button type="button" class="segment-btn" data-value="gemini">🔵 Google Gemini</button>
+        </div>
+      </section>
+
+      <!-- API Key Section -->
+      <section class="card api-card">
+        <div class="card-header">
+          <span class="icon">🔑</span>
+          <h2 id="api-key-label">NVIDIA API Key</h2>
+        </div>
+        <p class="card-desc" id="api-key-desc">Nhập API Key để AI dịch câu mượt mà chuẩn phim.</p>
+
+        <div class="input-group">
+          <input type="password" id="api-key" placeholder="nvapi-..." spellcheck="false" autocomplete="off">
+          <button type="button" id="toggle-key-visibility" class="btn-icon" title="Hiện/Ẩn Key">👁️</button>
+        </div>
+
+        <div class="api-actions">
+          <button type="button" id="btn-test-key" class="btn btn-secondary">
+            <span class="btn-text">Kiểm tra kết nối</span>
+          </button>
+          <a href="https://build.nvidia.com/" target="_blank" id="api-key-link" class="link-external">
+            Lấy Key NVIDIA ↗
+          </a>
+        </div>
+        <div id="api-status" class="status-msg"></div>
+      </section>
+
+      <!-- AI Model Selection -->
+      <section class="card">
+        <div class="card-header">
+          <span class="icon">⚡</span>
+          <h2>Mô hình AI (Model)</h2>
+        </div>
+        <div class="select-wrapper">
+          <select id="model-select">
+            <!-- Will be dynamically populated based on provider -->
+          </select>
+        </div>
+      </section>
+
+      <!-- Display Options -->
+      <section class="card">
+        <div class="card-header">
+          <span class="icon">🎨</span>
+          <h2>Tùy chỉnh hiển thị</h2>
+        </div>
+
+        <!-- Mode: Bilingual vs Vi Only -->
+        <div class="form-row">
+          <label for="mode-select">Chế độ hiển thị</label>
+          <div class="segmented-control" id="mode-group">
+            <button type="button" class="segment-btn active" data-value="bilingual">Song ngữ</button>
+            <button type="button" class="segment-btn" data-value="vi-only">Chỉ Tiếng Việt</button>
+          </div>
+        </div>
+
+        <!-- Font Size -->
+        <div class="form-row">
+          <label>Cỡ chữ phụ đề</label>
+          <div class="segmented-control" id="size-group">
+            <button type="button" class="segment-btn" data-value="small">Nhỏ</button>
+            <button type="button" class="segment-btn active" data-value="medium">Vừa</button>
+            <button type="button" class="segment-btn" data-value="large">Lớn</button>
+          </div>
+        </div>
+
+        <!-- Subtitle Color -->
+        <div class="form-row">
+          <label>Màu chữ chính</label>
+          <div class="color-palette" id="color-palette">
+            <button type="button" class="color-dot active" data-color="#FCD34D" style="background: #FCD34D;" title="Vàng điện ảnh"></button>
+            <button type="button" class="color-dot" data-color="#FFFFFF" style="background: #FFFFFF;" title="Trắng tinh khôi"></button>
+            <button type="button" class="color-dot" data-color="#FFE500" style="background: #FFE500;" title="Vàng Neon"></button>
+            <button type="button" class="color-dot" data-color="#38BDF8" style="background: #38BDF8;" title="Xanh Cyan"></button>
+          </div>
+        </div>
+
+        <!-- Backdrop Blur Toggle -->
+        <div class="form-row switch-row">
+          <label for="toggle-backdrop">Nền mờ kính (Backdrop Blur)</label>
+          <label class="switch mini">
+            <input type="checkbox" id="toggle-backdrop" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Subtitle Preview -->
+      <section class="card preview-card">
+        <div class="card-header">
+          <span class="icon">👁️</span>
+          <h2>Xem trước</h2>
+        </div>
+        <div class="preview-stage" id="preview-stage">
+          <div class="preview-sub-box size-medium has-backdrop" id="preview-sub-box">
+            <div class="preview-en" id="preview-en">Today we will explore modern artificial intelligence.</div>
+            <div class="preview-vi" id="preview-vi" style="color: #FCD34D;">Hôm nay chúng ta sẽ cùng khám phá trí tuệ nhân tạo hiện đại.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Storage / Cache -->
+      <div class="footer-actions">
+        <button type="button" id="btn-clear-cache" class="btn-text-action">
+          🗑️ Xóa bộ nhớ đệm phụ đề
+        </button>
+      </div>
+    </main>
+
+    <!-- Footer Toast -->
+    <div id="save-toast" class="save-toast">Đã tự động lưu cài đặt ✨</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
