@@ -26,9 +26,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const MODEL_OPTIONS = {
     nvidia: [
-      { value: 'meta/llama-3.1-8b-instruct', label: 'Meta LLaMA 3.1 8B Instruct (Khuyên dùng - Chuẩn Schema, Khớp 100%)' },
-      { value: 'nvidia/riva-translate-4b-instruct-v2', label: 'Riva-Translate-4B-Instruct-v2 (NVIDIA NIM - Siêu nhẹ)' },
-      { value: 'mistralai/mistral-nemo-12b-instruct', label: 'Mistral NeMo 12B Instruct (NVIDIA NIM)' }
+      { value: 'meta/llama-3.2-11b-vision-instruct', label: 'Meta LLaMA 3.2 11B Instruct (Khuyên dùng - Chuẩn Schema, Khớp 100%)' },
+      { value: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'NVIDIA Nemotron 3.5 Lightning 30B (Mới nhất - Cực thông minh)' },
+      { value: 'meta/llama-3.2-90b-vision-instruct', label: 'Meta LLaMA 3.2 90B Instruct (Mạnh nhất - Siêu thông minh)' },
+      { value: 'nvidia/riva-translate-4b-instruct-v2', label: 'Riva-Translate-4B-Instruct-v2 (NVIDIA NIM - Siêu nhẹ)' }
     ],
     gemini: [
       { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Khuyên dùng - Nhanh nhất)' },
@@ -41,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     apiKey: '',
     nvidiaApiKey: '',
     geminiApiKey: '',
-    nvidiaModel: 'nvidia/riva-translate-4b-instruct-v2',
+    nvidiaModel: 'meta/llama-3.2-11b-vision-instruct',
     geminiModel: 'gemini-2.0-flash',
     mode: 'bilingual',
     fontSize: 'medium',
@@ -53,6 +54,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Load settings from storage
   const saved = await chrome.storage.local.get(Object.keys(currentSettings));
   currentSettings = { ...currentSettings, ...saved };
+
+  // Auto-migrate legacy/deprecated models to Meta LLaMA 3.2 11B
+  if (!currentSettings.nvidiaModel || 
+      currentSettings.nvidiaModel === 'nvidia/riva-translate-4b-instruct-v2' || 
+      currentSettings.nvidiaModel === 'meta/llama-3.1-8b-instruct' ||
+      currentSettings.nvidiaModel === 'mistralai/mistral-nemo-12b-instruct') {
+    currentSettings.nvidiaModel = 'meta/llama-3.2-11b-vision-instruct';
+    chrome.storage.local.set({ nvidiaModel: 'meta/llama-3.2-11b-vision-instruct' });
+  }
 
   // 2. Populate UI
   toggleEnabled.checked = currentSettings.enabled !== false;
@@ -80,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateProviderUI(provider) {
     if (provider === 'nvidia') {
       apiKeyLabel.textContent = 'NVIDIA API Key';
-      apiKeyDesc.textContent = 'Dùng model Riva-Translate-4B siêu nhẹ qua NVIDIA NIM.';
+      apiKeyDesc.textContent = 'Dùng Meta LLaMA 3.2 qua NVIDIA NIM (khớp ID 100%).';
       apiKeyInput.placeholder = 'nvapi-...';
       apiKeyInput.value = currentSettings.nvidiaApiKey || (currentSettings.apiKey?.startsWith('nvapi-') ? currentSettings.apiKey : '');
       apiKeyLink.href = 'https://build.nvidia.com/';

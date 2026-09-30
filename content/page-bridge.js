@@ -3,8 +3,21 @@
 (() => {
   console.log('[CinemaSub Bridge] Running in YouTube MAIN world with Network Interceptor.');
 
-  let capturedTimedText = null;
-  let lastCapturedLang = null;
+  let capturedTranscript = {
+    videoId: null,
+    url: null,
+    lang: null,
+    text: null
+  };
+
+  function getCurrentVideoId() {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('v');
+    } catch (e) {
+      return null;
+    }
+  }
 
   // --- 1. NETWORK INTERCEPTOR ---
   // Intercept fetch
@@ -17,13 +30,25 @@
       try {
         const clone = response.clone();
         const text = await clone.text();
-        if (text && text.trim().length > 30) {
-          console.log('[CinemaSub Bridge] Intercepted timedtext via fetch! Length:', text.length);
-          capturedTimedText = text;
+        if (text && text.trim()) {
+          const urlObj = new URL(url, window.location.href);
+          const lang = urlObj.searchParams.get('lang') || urlObj.searchParams.get('hl') || null;
+          const v = urlObj.searchParams.get('v') || getCurrentVideoId();
+
+          console.log('[CinemaSub Bridge] Intercepted timedtext via fetch! Video:', v, 'Lang:', lang, 'Length:', text.length);
+          capturedTranscript = {
+            videoId: v,
+            url: url,
+            lang: lang,
+            text: text
+          };
+
           window.postMessage({
             type: 'CINEMA_SUB_INTERCEPTED_TRANSCRIPT',
-            text: text,
-            url: url
+            videoId: v,
+            url: url,
+            lang: lang,
+            text: text
           }, '*');
           setTimeout(hideNativePlayerCaptions, 150);
         }
@@ -46,15 +71,29 @@
   XMLHttpRequest.prototype.send = function(...args) {
     if (this._cinemaUrl && this._cinemaUrl.includes('/api/timedtext')) {
       this.addEventListener('load', function() {
-        if (this.responseText && this.responseText.trim().length > 30) {
-          console.log('[CinemaSub Bridge] Intercepted timedtext via XHR! Length:', this.responseText.length);
-          capturedTimedText = this.responseText;
-          window.postMessage({
-            type: 'CINEMA_SUB_INTERCEPTED_TRANSCRIPT',
-            text: this.responseText,
-            url: this._cinemaUrl
-          }, '*');
-          setTimeout(hideNativePlayerCaptions, 150);
+        if (this.responseText && this.responseText.trim()) {
+          try {
+            const urlObj = new URL(this._cinemaUrl, window.location.href);
+            const lang = urlObj.searchParams.get('lang') || urlObj.searchParams.get('hl') || null;
+            const v = urlObj.searchParams.get('v') || getCurrentVideoId();
+
+            console.log('[CinemaSub Bridge] Intercepted timedtext via XHR! Video:', v, 'Lang:', lang, 'Length:', this.responseText.length);
+            capturedTranscript = {
+              videoId: v,
+              url: this._cinemaUrl,
+              lang: lang,
+              text: this.responseText
+            };
+
+            window.postMessage({
+              type: 'CINEMA_SUB_INTERCEPTED_TRANSCRIPT',
+              videoId: v,
+              url: this._cinemaUrl,
+              lang: lang,
+              text: this.responseText
+            }, '*');
+            setTimeout(hideNativePlayerCaptions, 150);
+          } catch (e) {}
         }
       });
     }
@@ -143,14 +182,17 @@
 
   function respondTracks() {
     const tracks = getCaptionTracksFromPage();
+    const curVideoId = getCurrentVideoId();
+    const text = (capturedTranscript.videoId === curVideoId) ? capturedTranscript.text : null;
     window.postMessage({
       type: 'CINEMA_SUB_TRACKS_RESULT',
+      videoId: curVideoId,
       tracks: tracks,
-      capturedTranscript: capturedTimedText
+      capturedTranscript: text
     }, '*');
 
     document.dispatchEvent(new CustomEvent('CINEMA_SUB_TRACKS_RESULT_DOC', {
-      detail: JSON.stringify(tracks)
+      detail: JSON.stringify({ videoId: curVideoId, tracks: tracks })
     }));
   }
 
@@ -172,7 +214,7 @@
   });
 
   window.addEventListener('yt-navigate-finish', () => {
-    capturedTimedText = null;
+    capturedTranscript = { videoId: null, url: null, lang: null, text: null };
     hideNativePlayerCaptions();
     setTimeout(respondTracks, 1000);
   });

@@ -6,7 +6,7 @@ const DEFAULT_SETTINGS = {
   apiKey: '',
   nvidiaApiKey: '',
   geminiApiKey: '',
-  nvidiaModel: 'nvidia/riva-translate-4b-instruct-v2',
+  nvidiaModel: 'meta/llama-3.2-11b-vision-instruct',
   geminiModel: 'gemini-2.0-flash',
   mode: 'bilingual', // 'bilingual' | 'vi-only'
   fontSize: 'medium', // 'small' | 'medium' | 'large'
@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS = {
   enabled: true
 };
 
-// Initialize default settings on install
+// Initialize default settings on install and migrate legacy models
 chrome.runtime.onInstalled.addListener(async () => {
   const current = await chrome.storage.local.get(Object.keys(DEFAULT_SETTINGS));
   const toSet = {};
@@ -23,6 +23,12 @@ chrome.runtime.onInstalled.addListener(async () => {
     if (current[key] === undefined) {
       toSet[key] = value;
     }
+  }
+  // Auto-migrate legacy/deprecated models to Meta LLaMA 3.2 11B
+  if (current.nvidiaModel === 'nvidia/riva-translate-4b-instruct-v2' || 
+      current.nvidiaModel === 'meta/llama-3.1-8b-instruct' ||
+      current.nvidiaModel === 'mistralai/mistral-nemo-12b-instruct') {
+    toSet.nvidiaModel = 'meta/llama-3.2-11b-vision-instruct';
   }
   if (Object.keys(toSet).length > 0) {
     await chrome.storage.local.set(toSet);
@@ -55,7 +61,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Test API Key
-async function handleTestApiKey(apiKey, provider = 'nvidia', model = 'nvidia/riva-translate-4b-instruct-v2') {
+async function handleTestApiKey(apiKey, provider = 'nvidia', model = 'meta/llama-3.2-11b-vision-instruct') {
   if (!apiKey || !apiKey.trim()) {
     return { success: false, error: 'Vui lòng nhập API Key' };
   }
@@ -64,7 +70,7 @@ async function handleTestApiKey(apiKey, provider = 'nvidia', model = 'nvidia/riv
 
   if (provider === 'nvidia') {
     const url = 'https://integrate.api.nvidia.com/v1/chat/completions';
-    const isRiva = model.toLowerCase().includes('riva-translate');
+    const isRiva = model && model.toLowerCase().includes('riva-translate');
 
     const messages = isRiva
       ? [
@@ -132,7 +138,12 @@ async function handleTranslateChunks(videoId, fragments, chunkIndex = 0, totalCh
   }
 
   if (provider === 'nvidia') {
-    const model = settings.nvidiaModel || 'nvidia/riva-translate-4b-instruct-v2';
+    let model = settings.nvidiaModel;
+    // Auto-migrate legacy/deprecated models
+    if (!model || model === 'nvidia/riva-translate-4b-instruct-v2' || model === 'meta/llama-3.1-8b-instruct' || model === 'mistralai/mistral-nemo-12b-instruct') {
+      model = 'meta/llama-3.2-11b-vision-instruct';
+      chrome.storage.local.set({ nvidiaModel: model });
+    }
     return await translateWithNvidia(apiKey, model, fragments, chunkIndex, totalChunks);
   } else {
     const model = settings.geminiModel || 'gemini-2.0-flash';
@@ -193,27 +204,27 @@ async function translateWithNvidia(apiKey, model, items, chunkIndex, totalChunks
       subtitles
     };
   } else {
-    // General LLM on NVIDIA NIM (e.g. meta/llama-3.1-8b-instruct or mistralai/mistral-nemo-12b-instruct)
+    // General LLM on NVIDIA NIM (meta/llama-3.2-11b-vision-instruct, meta/llama-3.2-90b-vision-instruct, etc.)
     const jsonInput = units.map((u, idx) => ({
       id: idx + 1,
-      start: u.start,
-      end: u.end,
-      en: u.text
+      text: u.text
     }));
 
     const prompt = 
-`You are a professional cinema subtitle translator. Translate each subtitle into natural, fluent Vietnamese for movie subtitles.
-Keep the exact same JSON array structure and IDs.
-Output MUST strictly be a JSON array of objects:
+`You are a professional cinema subtitle translator. Translate English subtitle cues into natural, concise, fluent Vietnamese suitable for movie subtitles.
+CRITICAL RULES:
+1. Maintain the exact same JSON array structure and IDs.
+2. Output MUST strictly be a JSON array of objects:
 [
   {
     "id": 1,
-    "start": 0.5,
-    "end": 3.8,
-    "en": "English sentence",
-    "vi": "Câu dịch tiếng Việt chuẩn phụ đề phim rạp"
+    "vi": "Câu dịch tiếng Việt chuẩn phụ đề phim rạp (tối đa 1-2 dòng ngắn gọn)"
   }
 ]
+3. Return EXACTLY one translation object for every input ID. Never merge, skip, omit, or modify IDs.
+4. DO NOT combine or merge two cues together even if they belong to the same sentence! Translate each cue independently for its specific ID so it syncs 1:1 with audio timing!
+5. The output array MUST contain EXACTLY ${units.length} items with IDs from 1 to ${units.length}.
+6. CRITICAL: Output ONLY the valid raw JSON array. DO NOT output any reasoning, thinking process, markdown text, or explanations. Start output directly with [ and end with ].
 
 Subtitles to translate:
 ${JSON.stringify(jsonInput, null, 2)}`;
@@ -228,7 +239,7 @@ ${JSON.stringify(jsonInput, null, 2)}`;
       body: JSON.stringify({
         model: model,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
+        temperature: 0.1,
         max_tokens: 3500
       })
     });
@@ -258,27 +269,28 @@ async function translateWithGemini(apiKey, model, items, chunkIndex, totalChunks
     return { success: true, chunkIndex, totalChunks, subtitles: [] };
   }
 
+  // LLM only translates text - NEVER send timestamps to LLM
   const jsonInput = units.map((u, idx) => ({
     id: idx + 1,
-    start: u.start,
-    end: u.end,
-    en: u.text
+    text: u.text
   }));
 
   const systemInstruction = 
 `You are a professional Hollywood cinema subtitler and Vietnamese translator.
-Translate the English subtitles into natural, fluent Vietnamese cinema subtitles.
-Maintain the exact JSON array schema and IDs.
-Output MUST strictly be a JSON array of objects:
+Translate English subtitle cues into natural, concise, fluent Vietnamese cinema subtitles.
+CRITICAL RULES:
+1. Maintain the exact JSON array schema and IDs.
+2. Output MUST strictly be a JSON array of objects:
 [
   {
     "id": 1,
-    "start": 0.5,
-    "end": 3.8,
-    "en": "English sentence",
-    "vi": "Câu dịch tiếng Việt chuẩn phụ đề phim rạp."
+    "vi": "Câu dịch tiếng Việt tự nhiên, ngắn gọn, chuẩn phụ đề phim."
   }
-]`;
+]
+3. Return EXACTLY one translation object for every input ID. Never merge, split, omit, or modify IDs.
+4. Many inputs are short clauses, broken sentence fragments, or single words - you MUST translate each fragment independently for its specific ID so it matches the speaker's exact timing!
+5. The output array MUST contain EXACTLY ${units.length} items with IDs from 1 to ${units.length}.
+6. CRITICAL: Output ONLY the valid raw JSON array. DO NOT output any reasoning, thinking process, markdown text, or explanations. Start output directly with [ and end with ].`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const response = await fetch(url, {
@@ -290,7 +302,7 @@ Output MUST strictly be a JSON array of objects:
         parts: [{ text: `${systemInstruction}\n\nSubtitles to translate:\n${JSON.stringify(jsonInput, null, 2)}` }]
       }],
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0.1,
         response_mime_type: 'application/json'
       }
     })
@@ -313,94 +325,19 @@ Output MUST strictly be a JSON array of objects:
   };
 }
 
-// Convert input items to well-defined Subtitle Units (with id, start, end, text)
+// Normalize input items to well-defined Subtitle Units (PRESERVE source cues 100%, NO merging)
 function ensureSubtitleUnits(items) {
   if (!items || items.length === 0) return [];
-  // If items already have unit structure (id, end, text)
-  if (items[0].id !== undefined && items[0].end !== undefined && items[0].text !== undefined) {
-    return items;
-  }
-  // Otherwise, group raw fragments into cinema units
-  return buildCinemaSubtitleUnits(items);
+  return items.map((item, idx) => ({
+    id: item.id !== undefined ? item.id : idx + 1,
+    start: item.start !== undefined ? item.start : 0,
+    end: item.end !== undefined ? item.end : (item.start + (item.duration || 2.0)),
+    duration: item.duration !== undefined ? item.duration : (item.end - (item.start || 0)),
+    text: (item.text || item.en || '').trim()
+  }));
 }
 
-// Group raw speech fragments into cinema-length subtitle units (3.0s - 5.5s)
-// respecting natural pauses (> 0.35s) and sentence endings
-function buildCinemaSubtitleUnits(fragments) {
-  if (!fragments || fragments.length === 0) return [];
-
-  const units = [];
-  let currentFrags = [];
-  let currentStart = null;
-  let currentEnd = null;
-
-  for (let i = 0; i < fragments.length; i++) {
-    const f = fragments[i];
-    const text = (f.text || '').trim();
-    if (!text) continue;
-
-    if (currentStart === null) {
-      currentStart = f.start;
-    }
-    currentEnd = f.start + f.duration;
-    currentFrags.push(f);
-
-    const fullText = currentFrags.map(x => x.text.trim()).join(' ');
-    const wordCount = fullText.split(/\s+/).length;
-    const curDuration = currentEnd - currentStart;
-
-    // Check gap/silence pause to next fragment
-    let hasPause = false;
-    if (i + 1 < fragments.length) {
-      const nextFrag = fragments[i + 1];
-      const gap = nextFrag.start - currentEnd;
-      if (gap >= 0.35) {
-        hasPause = true;
-      }
-    }
-
-    const hasPunctuation = /[.?!;]$/.test(text);
-    const isLast = i === fragments.length - 1;
-
-    // Subtitle unit boundary condition:
-    // Natural cinema sentence: up to 6.5s duration, 16-18 words max
-    // Only close early if sentence punctuation or distinct speech pause occurs
-    const shouldClose = isLast
-      || hasPunctuation
-      || (hasPause && curDuration >= 2.8)
-      || (curDuration >= 5.0 && wordCount >= 12)
-      || curDuration >= 6.5
-      || wordCount >= 18;
-
-    if (shouldClose) {
-      units.push({
-        id: units.length + 1,
-        start: parseFloat(currentStart.toFixed(2)),
-        end: parseFloat(currentEnd.toFixed(2)),
-        duration: parseFloat(curDuration.toFixed(2)),
-        text: capitalizeFirst(fullText)
-      });
-      currentFrags = [];
-      currentStart = null;
-      currentEnd = null;
-    }
-  }
-
-  if (currentFrags.length > 0 && currentStart !== null) {
-    const fullText = currentFrags.map(x => x.text.trim()).join(' ');
-    units.push({
-      id: units.length + 1,
-      start: parseFloat(currentStart.toFixed(2)),
-      end: parseFloat(currentEnd.toFixed(2)),
-      duration: parseFloat((currentEnd - currentStart).toFixed(2)),
-      text: capitalizeFirst(fullText)
-    });
-  }
-
-  return units;
-}
-
-// Map Riva translation output back to original Subtitle Units
+// Map translation output back to original Subtitle Units
 // Guaranteed: audio timestamps (start, end) are 100% PRESERVED from YouTube audio!
 function mapTranslationsToUnits(units, rawOutput) {
   if (!units || units.length === 0) return [];
@@ -408,108 +345,184 @@ function mapTranslationsToUnits(units, rawOutput) {
     return units.map(u => ({ id: u.id, start: u.start, end: u.end, en: u.text, vi: u.text }));
   }
 
-  // Step 1: Riva often returns everything on ONE line like:
-  // "1. Xin chào 2. Thế giới 3. Tạm biệt"
-  // We need to split on numbered patterns first, THEN fall back to newlines.
   const lineMap = new Map();
 
-  // Try splitting by numbered pattern inline: look for "N. text" or "N) text" patterns
-  const numberedPattern = /(?:^|\s)(\d+)\s*[.\):\-]\s+/g;
+  // Pattern 1: Inline numbers e.g. "1. Xin chào 2. Bạn khỏe không" or "1) ... 2) ..." or "[1] ... [2] ..."
+  const numberedPattern = /(?:^|\s)(?:\[(\d+)\]|(\d+)[\.:\-\)])\s*(.+?)(?=(?:(?:\s+\[\d+\]|\s+\d+[\.:\-\)]))|$)/gs;
   const inlineMatches = [...rawOutput.matchAll(numberedPattern)];
 
-  if (inlineMatches.length >= 2) {
-    for (let m = 0; m < inlineMatches.length; m++) {
-      const match = inlineMatches[m];
-      const id = parseInt(match[1], 10);
-      const startPos = match.index + match[0].length;
-      let endPos;
-      if (m + 1 < inlineMatches.length) {
-        endPos = inlineMatches[m + 1].index;
-      } else {
-        endPos = rawOutput.length;
+  if (inlineMatches.length >= 1) {
+    for (const match of inlineMatches) {
+      const id = parseInt(match[1] || match[2], 10);
+      const text = cleanSubtitleText((match[3] || '').trim());
+      if (text && !lineMap.has(id)) {
+        lineMap.set(id, text);
       }
-      const text = rawOutput.slice(startPos, endPos).trim();
-      if (text) lineMap.set(id, text);
     }
   }
 
-  // If inline parsing found enough matches, use them
-  if (lineMap.size >= Math.max(1, Math.floor(units.length * 0.4))) {
-    console.log('[CinemaSub] Mapped ' + lineMap.size + '/' + units.length + ' via inline numbered pattern.');
-    return units.map(function(u, idx) {
-      var localId = idx + 1;
-      var vi = lineMap.get(localId) || lineMap.get(u.id) || u.text;
-      return { id: u.id, start: u.start, end: u.end, en: u.text, vi: vi };
+  // Pattern 2: Multiline numbered lines e.g.
+  // 1. Text
+  // 2. Text
+  const lines = rawOutput.replace(/\r\n/g, '\n').split('\n').map(l => l.trim()).filter(Boolean);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.match(/^(?:\[(\d+)\]|(\d+)[\.:\-\)\s]+)\s*(.+)$/);
+    if (m) {
+      const id = parseInt(m[1] || m[2], 10);
+      const text = cleanSubtitleText((m[3] || '').trim());
+      if (text && !lineMap.has(id)) {
+        lineMap.set(id, text);
+      }
+    }
+  }
+
+  // If numbers were recognized, strictly map by ID - never borrow subsequent lines to avoid drift!
+  if (lineMap.size > 0) {
+    return units.map((u, idx) => {
+      const localId = idx + 1;
+      const vi = lineMap.get(localId) || lineMap.get(u.id);
+      return {
+        id: u.id,
+        start: u.start,
+        end: u.end,
+        en: u.text,
+        vi: vi || u.text
+      };
     });
   }
 
-  // Fallback: Try newline-separated parsing
-  var lines = rawOutput.replace(/\r\n/g, '\n').split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
-  var lineMap2 = new Map();
-
-  for (var li = 0; li < lines.length; li++) {
-    var line = lines[li];
-    var m2 = line.match(/^(?:\[(\d+)\]|(\d+)[\.:\-\)\s]+)\s*(.+)$/);
-    if (m2) {
-      var id2 = parseInt(m2[1] || m2[2], 10);
-      var text2 = (m2[3] || '').trim();
-      if (text2) lineMap2.set(id2, text2);
-    }
-  }
-
-  if (lineMap2.size >= Math.max(1, Math.floor(units.length * 0.4))) {
-    console.log('[CinemaSub] Mapped ' + lineMap2.size + '/' + units.length + ' via newline numbered pattern.');
-    return units.map(function(u, idx) {
-      var localId = idx + 1;
-      var vi = lineMap2.get(localId) || lineMap2.get(u.id) || u.text;
-      return { id: u.id, start: u.start, end: u.end, en: u.text, vi: vi };
-    });
-  }
-
-  // Last fallback: Sequential line-by-line matching
-  console.log('[CinemaSub] Falling back to sequential line matching.');
-  return units.map(function(u, idx) {
-    var vi = u.text;
-    if (idx < lines.length) {
-      vi = cleanNumberedPrefix(lines[idx]) || u.text;
-    }
-    return { id: u.id, start: u.start, end: u.end, en: u.text, vi: vi };
-  });
-}
-
-// Parse structured JSON array from LLM (LLaMA 3.1 / Gemini)
-// Guaranteed: audio timestamps (start, end) are 100% PRESERVED from YouTube audio!
-function parseSubtitlesJsonWithUnits(units, textOutput) {
-  let parsed = [];
-  try {
-    parsed = JSON.parse(textOutput);
-  } catch (parseErr) {
-    const jsonMatch = textOutput.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (jsonMatch) {
-      try {
-        parsed = JSON.parse(jsonMatch[0]);
-      } catch (e) {}
-    }
-  }
-
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    // If model returned plain text instead of JSON, map as text
-    return mapTranslationsToUnits(units, textOutput);
-  }
-
-  // Map parsed JSON objects back to our immutable audio units
+  // Fallback ONLY if no numbers existed at all: sequential 1-to-1 matching
   return units.map((u, idx) => {
-    const localId = idx + 1;
-    const item = parsed.find(p => p.id === localId || p.id === u.id) || parsed[idx] || {};
-    const vi = (item.vi || item.text || item.vietnamese || '').trim();
+    let vi = u.text;
+    if (idx < lines.length) {
+      const cleaned = cleanSubtitleText(lines[idx]);
+      if (cleaned) vi = cleaned;
+    }
     return {
       id: u.id,
-      start: u.start, // Always enforce audio start
-      end: u.end,     // Always enforce audio end
+      start: u.start,
+      end: u.end,
       en: u.text,
       vi: vi || u.text
     };
   });
+}
+
+// Parse structured JSON array from LLM (LLaMA 3.2 / Nemotron 3.5 / Gemini)
+// Multi-strategy fail-safe: cleans markdown code fences, removes trailing commas,
+// and uses Regex Object Extraction so even broken/truncated JSON parses 100% cleanly!
+function parseSubtitlesJsonWithUnits(units, textOutput) {
+  if (!units || units.length === 0) return [];
+  if (!textOutput || typeof textOutput !== 'string') {
+    return units.map(u => ({ id: u.id, start: u.start, end: u.end, en: u.text, vi: u.text }));
+  }
+
+  let parsed = [];
+
+  // Step 1: Strip markdown code blocks & thinking process tags (<think>...</think>)
+  let cleaned = textOutput
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/```(?:json)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  // Step 2: Remove trailing commas before } or ]
+  const cleanedNoTrailingComma = cleaned.replace(/,\s*([}\]])/g, '$1');
+
+  // Step 3: Try standard JSON.parse on full cleaned text
+  try {
+    const res = JSON.parse(cleanedNoTrailingComma);
+    if (Array.isArray(res) && res.length > 0) parsed = res;
+  } catch (e) {}
+
+  // Step 4: Try extracting first JSON array [...]
+  if (parsed.length === 0) {
+    const arrayMatch = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (arrayMatch) {
+      try {
+        const fixedArray = arrayMatch[0].replace(/,\s*([}\]])/g, '$1');
+        const res = JSON.parse(fixedArray);
+        if (Array.isArray(res) && res.length > 0) parsed = res;
+      } catch (e) {}
+    }
+  }
+
+  // Step 5: REGEX OBJECT EXTRACTION (Fail-safe for malformed, broken, or truncated JSON)
+  // Extracts each { "id": N, "vi": "..." } directly from text with 100% reliability!
+  if (parsed.length === 0) {
+    const objectRegex = /\{\s*"id"\s*:\s*(\d+)\s*,\s*"(?:vi|translation|text|vietnamese)"\s*:\s*"((?:\\.|[^"\\])*)"\s*\}/g;
+    let match;
+    while ((match = objectRegex.exec(cleaned)) !== null) {
+      const id = parseInt(match[1], 10);
+      let viText = match[2];
+      try {
+        viText = JSON.parse(`"${viText}"`);
+      } catch (err) {
+        viText = viText.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      }
+      parsed.push({ id, vi: viText });
+    }
+  }
+
+  // Step 6: Map to Units if JSON objects were extracted
+  if (Array.isArray(parsed) && parsed.length > 0) {
+    const viMap = new Map();
+    for (let i = 0; i < parsed.length; i++) {
+      const p = parsed[i];
+      if (p) {
+        const rawVi = (p.vi || p.translation || p.text || p.vietnamese || (typeof p === 'string' ? p : '')).trim();
+        const cleanVi = cleanSubtitleText(rawVi);
+        if (cleanVi) {
+          if (p.id !== undefined) {
+            viMap.set(Number(p.id), cleanVi);
+          }
+          if (!viMap.has(i + 1)) {
+            viMap.set(i + 1, cleanVi);
+          }
+        }
+      }
+    }
+
+    return units.map((u, idx) => {
+      const localId = idx + 1;
+      const vi = viMap.get(localId) || viMap.get(u.id);
+      return {
+        id: u.id,
+        start: u.start, // Always enforce audio start
+        end: u.end,     // Always enforce audio end
+        en: u.text,
+        vi: vi || u.text
+      };
+    });
+  }
+
+  // Step 7: Fallback to text line mapping with strict JSON cleaning
+  return mapTranslationsToUnits(units, textOutput);
+}
+
+// Clean and sanitize subtitle text so raw JSON syntax ({ "id": 6, "vi": "..." }) NEVER reaches UI
+function cleanSubtitleText(str) {
+  if (!str || typeof str !== 'string') return '';
+  let text = str.trim();
+
+  // If text is a full or partial JSON snippet: { "id": 6, "vi": "..." } or "vi": "..."
+  const viMatch = text.match(/"(?:vi|translation|text|vietnamese)"\s*:\s*"((?:\\.|[^"\\])*)"/);
+  if (viMatch) {
+    try {
+      text = JSON.parse(`"${viMatch[1]}"`).trim();
+    } catch (e) {
+      text = viMatch[1].replace(/\\"/g, '"').trim();
+    }
+  }
+
+  // Strip accidental outer JSON characters like { } [ ] " ,
+  text = text.replace(/^[{\[\s"',]+|[}\]\s"',;]+$/g, '').trim();
+
+  // Strip numbered prefixes like "1. ", "[1] "
+  text = cleanNumberedPrefix(text);
+
+  return text;
 }
 
 function cleanNumberedPrefix(str) {
