@@ -32,8 +32,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       { value: 'nvidia/riva-translate-4b-instruct-v2', label: 'Riva-Translate-4B-Instruct-v2 (NVIDIA NIM - Siêu nhẹ)' }
     ],
     gemini: [
-      { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Khuyên dùng - Nhanh nhất)' },
-      { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (Rất ổn định)' }
+      { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite (Khuyên dùng - Siêu tốc & Mới nhất)' },
+      { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite (Rất nhanh & Ổn định)' },
+      { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash (Mạnh mẽ - Ngữ cảnh sâu)' }
     ]
   };
 
@@ -43,7 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     nvidiaApiKey: '',
     geminiApiKey: '',
     nvidiaModel: 'meta/llama-3.2-11b-vision-instruct',
-    geminiModel: 'gemini-2.0-flash',
+    geminiModel: 'gemini-3.5-flash-lite',
     mode: 'bilingual',
     fontSize: 'medium',
     subColor: '#FCD34D',
@@ -62,6 +63,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentSettings.nvidiaModel === 'mistralai/mistral-nemo-12b-instruct') {
     currentSettings.nvidiaModel = 'meta/llama-3.2-11b-vision-instruct';
     chrome.storage.local.set({ nvidiaModel: 'meta/llama-3.2-11b-vision-instruct' });
+  }
+
+  // Auto-migrate legacy/deprecated Gemini models to Gemini 3.5 Flash-Lite
+  if (!currentSettings.geminiModel || 
+      currentSettings.geminiModel.startsWith('gemini-1.') || 
+      currentSettings.geminiModel.startsWith('gemini-2.')) {
+    currentSettings.geminiModel = 'gemini-3.5-flash-lite';
+    chrome.storage.local.set({ geminiModel: 'gemini-3.5-flash-lite' });
   }
 
   // 2. Populate UI

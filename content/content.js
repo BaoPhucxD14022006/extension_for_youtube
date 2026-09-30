@@ -10,7 +10,7 @@
   let isSubtitlesEnabled = true;
   let settings = {
     apiKey: '',
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.5-flash-lite',
     mode: 'bilingual',
     fontSize: 'medium',
     subColor: '#FCD34D',
@@ -1052,14 +1052,14 @@
           const chunkUnits = chunks[targetChunkIndex];
 
           let res = null;
-          for (let attempt = 0; attempt < 2; attempt++) {
+          for (let attempt = 0; attempt < 3; attempt++) {
             if (currentVideoId !== videoId) break;
             try {
               res = await sendTranslateRequest(videoId, chunkUnits, targetChunkIndex, totalChunks);
               if (res && res.success && res.subtitles) break;
             } catch (err) {
               console.warn(`[CinemaSub] Chunk ${targetChunkIndex} retry ${attempt + 1}:`, err);
-              await new Promise(r => setTimeout(r, 400));
+              await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
             }
           }
 

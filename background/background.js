@@ -7,7 +7,7 @@ const DEFAULT_SETTINGS = {
   nvidiaApiKey: '',
   geminiApiKey: '',
   nvidiaModel: 'meta/llama-3.2-11b-vision-instruct',
-  geminiModel: 'gemini-2.0-flash',
+  geminiModel: 'gemini-3.5-flash-lite',
   mode: 'bilingual', // 'bilingual' | 'vi-only'
   fontSize: 'medium', // 'small' | 'medium' | 'large'
   subColor: '#FCD34D', // Cinema Gold
@@ -29,6 +29,12 @@ chrome.runtime.onInstalled.addListener(async () => {
       current.nvidiaModel === 'meta/llama-3.1-8b-instruct' ||
       current.nvidiaModel === 'mistralai/mistral-nemo-12b-instruct') {
     toSet.nvidiaModel = 'meta/llama-3.2-11b-vision-instruct';
+  }
+  // Auto-migrate legacy/deprecated Gemini models to Gemini 3.5 Flash-Lite
+  if (!current.geminiModel || 
+      current.geminiModel.startsWith('gemini-1.') || 
+      current.geminiModel.startsWith('gemini-2.')) {
+    toSet.geminiModel = 'gemini-3.5-flash-lite';
   }
   if (Object.keys(toSet).length > 0) {
     await chrome.storage.local.set(toSet);
@@ -103,7 +109,10 @@ async function handleTestApiKey(apiKey, provider = 'nvidia', model = 'meta/llama
 
     return { success: true };
   } else {
-    const geminiModel = model || 'gemini-2.0-flash';
+    let geminiModel = model || 'gemini-3.5-flash-lite';
+    if (geminiModel.startsWith('gemini-1.') || geminiModel.startsWith('gemini-2.')) {
+      geminiModel = 'gemini-3.5-flash-lite';
+    }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${cleanKey}`;
     const response = await fetch(url, {
       method: 'POST',
@@ -146,7 +155,11 @@ async function handleTranslateChunks(videoId, fragments, chunkIndex = 0, totalCh
     }
     return await translateWithNvidia(apiKey, model, fragments, chunkIndex, totalChunks);
   } else {
-    const model = settings.geminiModel || 'gemini-2.0-flash';
+    let model = settings.geminiModel || 'gemini-3.5-flash-lite';
+    if (model.startsWith('gemini-1.') || model.startsWith('gemini-2.')) {
+      model = 'gemini-3.5-flash-lite';
+      chrome.storage.local.set({ geminiModel: model });
+    }
     return await translateWithGemini(apiKey, model, fragments, chunkIndex, totalChunks);
   }
 }
@@ -246,7 +259,13 @@ ${JSON.stringify(jsonInput, null, 2)}`;
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(`NVIDIA API: ${err.detail || err.error?.message || response.statusText}`);
+      const msg = err.detail || err.error?.message || response.statusText;
+      if (response.status === 429) {
+        throw new Error(`NVIDIA API (429): Tạm thời vượt giới hạn request/phút. Hệ thống sẽ tự thử lại...`);
+      } else if (response.status === 402 || (typeof msg === 'string' && msg.toLowerCase().includes('quota'))) {
+        throw new Error(`NVIDIA API (402): Hết credit trên tài khoản NVIDIA. Bạn có thể mở cài đặt đổi sang Google Gemini hoàn toàn miễn phí!`);
+      }
+      throw new Error(`NVIDIA API (${response.status}): ${msg}`);
     }
 
     const data = await response.json();
